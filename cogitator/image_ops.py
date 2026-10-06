@@ -50,7 +50,7 @@ def _gaussian(arr: np.ndarray, sigma: float) -> np.ndarray:
     """高斯模糊，按可用库降级：cv2 → scipy → 盒式近似。
 
     大半径时先降采样再模糊再升采样：模糊本身是低频操作，这样在 24MP 上把
-    sigma=22 的耗时从 4.0s 降到约 0.15s，肉眼几乎无差别（实测见 tools/profile_ops.py）。
+    sigma=22 的耗时从 4.0s 降到约 0.15s，肉眼几乎无差别（曾在真实 24MP 图上逐个算子计时得出）。
     """
     if sigma <= 0.03:
         return arr

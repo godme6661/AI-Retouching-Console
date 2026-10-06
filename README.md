@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-3DA639)](LICENSE)
 [![Local](https://img.shields.io/badge/本地运行-离线可用-4C8BF5)](#)
-[![Tests](https://img.shields.io/badge/自检-434%20项-brightgreen)](#测试与验证)
+[![Tests](https://img.shields.io/badge/仓库-只含应用本体-lightgrey)](#)
 [![Deps](https://img.shields.io/badge/无数据库-无前端构建-lightgrey)](#项目结构)
 
 一个跑在本机的轻量修图台：你在对话框里用自然语言说想要什么，AI 把它翻译成**结构化的编辑指令**，
@@ -110,7 +110,7 @@
 | --- | --- |
 | ![教学](docs/screenshots/05-teaching.png) | ![设置](docs/screenshots/06-settings.png) |
 
-> 截图使用程序生成的合成示例图（`tools/make_demo_photo.py`），不含任何个人照片。
+> 截图使用程序生成的合成示例图，不含任何个人照片。
 
 ---
 
@@ -258,7 +258,7 @@ AI 的回复包含三段：**意图**（它理解成了什么）、**诊断**（
 补充两个工程细节：
 
 * **预览按显示尺寸渲染**（默认最长边 1400px），像素单位参数按渲染比例同步缩放，
-  与"全分辨率渲染再缩小"在数值上等价（自检里有断言），所以预览是可信的；
+  与"全分辨率渲染再缩小"在数值上等价，所以预览是可信的；
   需要判断锐化时用「输出像素」看真 1:1。
 * **RAW 三条解码路径**：`rawpy`（装了就用）→ Windows 系统 WIC → CR3 文件内嵌 JPEG 保底。
   解码只发生在导入时，结果落盘为普通图片，因此**已建工程在任何机器上渲染都一样**。
@@ -281,47 +281,30 @@ cogitator/            应用主体（FastAPI + numpy/Pillow，无前端构建）
   server.py           34 个 HTTP 路由
   web/                原生 HTML/CSS/JS 前端（零构建）
 skills/aesthetics/    审美知识库：常驻核心 + 11 份按需参考（构图/光影/色彩/人像/街拍…）
-tools/                自检与开发工具（见下）
-docs/                 设计文档与截图
-samples/              （可选）放一张 RAW 供解码相关自检使用
+docs/                 设计文档（docs/DESIGN.md）与界面截图
 ```
 
 ---
 
-## 测试与验证
+## 关于测试脚本
 
-这个项目的自检力度比功能代码还大——**因为"AI 会犯错"和"像素很诚实"这两件事都可以被断言**。
+本仓库**只保留应用本体**：开发期用来验证它的一整套自检脚本（算子契约 78 项、像素端到端 89 项、
+技能包 41 项、对话链路 54 项、RAW 解码、前端静态守卫、端到端 HTTP 验收，
+以及三层驱动真实浏览器的交互检查）已从仓库中移除，以保持项目精简。
 
-```bash
-python tools/selftest_ops.py         #  78 项：算子契约、校验器、调色数值、几何预演、端口探测
-python tools/selftest_doc.py         #  89 项：像素端到端、撤销重做、图层合成、风格配方、预览↔导出等价
-python tools/selftest_skills.py      #  41 项：技能包解析、按需加载、配方逐条过注册表、强度缩放
-python tools/selftest_agent.py       #  54 项：假模型驱动整条对话链路（含畸形 JSON 容错）
-python tools/check_json_tolerance.py #  17 项：真实模型会吐出的畸形 JSON 逐条体检
-python tools/selftest_raw.py         #  32 项（提供 RAW 样本后 67 项）：三条解码路径、字节一致性、EXIF 方向
-python tools/selftest_shutdown.py    #  26 项：静态守卫与退出链路（防止"点了没反应"复发）
-
-# 端到端（真实 HTTP，默认不调用真实模型、不花你的额度）
-python -m cogitator --port 8791 --no-browser
-python tools/e2e_check.py --base http://127.0.0.1:8791     # 97 项（提供 RAW 样本后 103 项）
-```
-
-还有三层**驱动真实浏览器**的交互检查（用 CDP，零依赖，本机有 Edge/Chrome 即可）：
+需要它们时可以从提交历史里取回（它们仍在历史提交 `306851d` 中）：
 
 ```bash
-node tools/check_quit_ui.mjs      --base http://127.0.0.1:8791   #  6 项：点「退出」必须真有反应
-node tools/check_compare_ui.mjs   --base http://127.0.0.1:8791   # 18 项：对比交互（拖动不得误加图层等）
-node tools/check_ui_extras.mjs    --base http://127.0.0.1:8791   # 41 项：缩放/输出像素/面板/快捷键/折叠/素材归属
+git checkout 306851d -- tools/
 ```
 
-**共 434 项断言**（提供 RAW 样本后 475 项）+ 65 项浏览器交互检查。
+这些脚本记录了不少"曾经踩过的坑"，如果你要改这个项目，**建议先取回来**：
 
-其中不少断言是**为了记住曾经踩过的坑**，例如：
-
-* 原生 `confirm()` 被浏览器静默阻止 → 界面按钮"点了没反应"（已改为应用内确认框，且保留间谍断言）；
-* `<img>` 默认可拖拽，Chrome 会把页面内的图塞进 `dataTransfer.files` → 拖动对比分割线时把预览图叠到了画布上；
-* 预览是下采样栅格，**不能**用它判断输出像素级锐化 → 状态栏措辞有断言守着，禁止写回"1:1 检查"；
-* `.bat` 必须是 CRLF 换行，否则 cmd 解析中文行报出莫名其妙的错误。
+* 原生 `confirm()` 会被浏览器静默阻止 → 界面按钮"点了没反应"（已改为应用内确认框）；
+* `<img>` 默认可拖拽，Chrome 会把页面内的图塞进 `dataTransfer.files`
+  → 拖动对比分割线时把预览图当成素材叠到了画布上；
+* 预览是下采样栅格，**不能**用它判断输出像素级锐化（界面的提示文案已按此修正）；
+* `.bat` 必须是 CRLF 换行，否则 cmd 解析中文行会报莫名其妙的错误。
 
 ---
 
@@ -357,16 +340,9 @@ node tools/check_ui_extras.mjs    --base http://127.0.0.1:8791   # 41 项：缩�
 
 欢迎提 Issue 与 PR。几条约定：
 
-1. **改动请带验证**：新增算子或修行为，请在 `tools/selftest_*.py` 里加断言（这是本项目最看重的部分）；
+1. **改动请说明动机与影响面**：这个项目里「改一个算子」可能影响预览、导出与风格配方，PR 里请写清你验证过的路径；
 2. **不要引入外部前端依赖**：前端是零构建的原生 HTML/CSS/JS，这条是为"轻量、离线可用"服务的；
-3. **不要把密钥、个人路径写进代码**：一律走环境变量或 `config/settings.json`；
-4. 提交前跑一遍：
-
-```bash
-python tools/selftest_ops.py && python tools/selftest_doc.py && \
-python tools/selftest_skills.py && python tools/selftest_agent.py && \
-python tools/selftest_shutdown.py
-```
+3. **不要把密钥、个人路径写进代码**：一律走环境变量或 `config/settings.json`。
 
 ---
 
