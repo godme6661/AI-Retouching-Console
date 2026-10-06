@@ -1,0 +1,31 @@
+MIT License
+
+Copyright (c) 2025 godme6661
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+第三方组件与模型（不包含在本仓库中，各自遵循其原始许可）：
+
+* 抠图权重 RMBG-2.0 / BiRefNet —— 由 BRIA 发布，遵循其自有许可（bria-rmbg-2.0），
+  商业使用需另行授权。本项目**不分发权重**，请自行获取并遵守其条款。
+* 其余依赖（FastAPI / Pillow / numpy / OpenCV / PyTorch / timm / kornia / rawpy 等）
+  均为宽松许可（MIT / BSD / Apache-2.0）；rawpy 内置的 LibRaw 为 LGPL-2.1 / CDDL，
+  以动态链接方式使用。

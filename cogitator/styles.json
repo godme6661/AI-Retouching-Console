@@ -1,0 +1,280 @@
+{
+  "_readme": [
+    "风格配方：每套都是「意图 + 一串确定性算子」。套用后每个算子仍然独立可见、可单独微调或删除。",
+    "strength（0~150）按 ops.style_scalable() 的规则缩放强度类参数；色相角度、比例等语义参数不缩放，",
+    "否则强度一改就把风格方向也改掉了。",
+    "所有条目都会被 tools/selftest_ops.py 用算子注册表逐条校验，写错参数名或超范围会立刻自检失败。"
+  ],
+  "styles": [
+    {
+      "id": "jp-airy",
+      "name": "日系空气感",
+      "group": "通用",
+      "intent": "明亮、通透、低反差，留白呼吸感强；绿色偏黄变柔，阴影不死黑",
+      "suits": ["人像", "日常", "静物", "咖啡店", "阴天外景"],
+      "ops": [
+        {"op": "exposure", "value": 0.12},
+        {"op": "shadows", "value": 14},
+        {"op": "highlights", "value": -8},
+        {"op": "contrast", "value": -10},
+        {"op": "saturation", "value": -8},
+        {"op": "vibrance", "value": 10},
+        {"op": "temperature", "value": -6},
+        {"op": "tint", "value": 3},
+        {"op": "hsl", "color": "green", "hue": -10, "saturation": -14, "luminance": 10},
+        {"op": "hsl", "color": "aqua", "hue": -6, "saturation": -10, "luminance": 12},
+        {"op": "split_tone", "highlight_hue": 50, "highlight_sat": 6, "shadow_hue": 190, "shadow_sat": 8},
+        {"op": "clarity", "value": -8},
+        {"op": "sharpen", "value": 15, "radius": 1.0},
+        {"op": "grain", "amount": 6, "size": 1.1}
+      ]
+    },
+    {
+      "id": "film-warm",
+      "name": "胶片暖调",
+      "group": "通用",
+      "intent": "暖调、阴影抬起、颗粒明显；像过期彩色负片那样宽容而柔和",
+      "suits": ["人像", "街拍", "日常", "旅行"],
+      "ops": [
+        {"op": "exposure", "value": 0.05},
+        {"op": "levels", "black": 12, "white": 250, "gamma": 1.02},
+        {"op": "contrast", "value": -6},
+        {"op": "shadows", "value": 18},
+        {"op": "highlights", "value": -14},
+        {"op": "saturation", "value": -10},
+        {"op": "vibrance", "value": 12},
+        {"op": "temperature", "value": 7},
+        {"op": "split_tone", "highlight_hue": 45, "highlight_sat": 18, "shadow_hue": 205, "shadow_sat": 12},
+        {"op": "sharpen", "value": 20, "radius": 1.2},
+        {"op": "grain", "amount": 24, "size": 1.5}
+      ]
+    },
+    {
+      "id": "cinematic",
+      "name": "电影青橙",
+      "group": "氛围",
+      "intent": "冷阴影 + 暖肤色，中间调收窄、对比结实；注意别把肤色推成塑料橙",
+      "suits": ["人像", "街拍", "城市", "夜幕"],
+      "caution": "肤色占比大时要降低 highlight_sat 与 orange 的饱和度，否则脸会发橙。",
+      "ops": [
+        {"op": "contrast", "value": 16},
+        {"op": "shadows", "value": 12},
+        {"op": "highlights", "value": -10},
+        {"op": "blacks", "value": -8},
+        {"op": "saturation", "value": -4},
+        {"op": "vibrance", "value": 6},
+        {"op": "split_tone", "highlight_hue": 38, "highlight_sat": 20, "shadow_hue": 200, "shadow_sat": 22, "balance": -10},
+        {"op": "hsl", "color": "blue", "saturation": 10, "luminance": -6},
+        {"op": "clarity", "value": 6},
+        {"op": "vignette", "amount": 14, "feather": 60},
+        {"op": "grain", "amount": 5, "size": 1.0}
+      ]
+    },
+    {
+      "id": "moody-dark",
+      "name": "暗调氛围",
+      "group": "氛围",
+      "intent": "低明度、低压暗部、冷阴影，情绪沉稳；靠留黑而非压黑",
+      "suits": ["人像", "静物", "建筑", "雨天"],
+      "ops": [
+        {"op": "exposure", "value": -0.22},
+        {"op": "contrast", "value": 20},
+        {"op": "shadows", "value": -14},
+        {"op": "blacks", "value": -16},
+        {"op": "whites", "value": -6},
+        {"op": "saturation", "value": -16},
+        {"op": "vibrance", "value": 4},
+        {"op": "split_tone", "highlight_hue": 45, "highlight_sat": 6, "shadow_hue": 220, "shadow_sat": 20},
+        {"op": "clarity", "value": 8},
+        {"op": "vignette", "amount": 26, "feather": 55},
+        {"op": "grain", "amount": 8, "size": 1.2}
+      ]
+    },
+    {
+      "id": "neon-night",
+      "name": "夜景霓虹",
+      "group": "氛围",
+      "intent": "保留高光的灯光色，抬暗部看得到环境，紫蓝霓虹更浓；噪声要压住",
+      "suits": ["城市夜景", "街拍", "赛博感"],
+      "ops": [
+        {"op": "exposure", "value": 0.1},
+        {"op": "contrast", "value": 18},
+        {"op": "shadows", "value": 24},
+        {"op": "blacks", "value": 8},
+        {"op": "highlights", "value": -8},
+        {"op": "vibrance", "value": 18},
+        {"op": "hsl", "color": "magenta", "saturation": 18, "luminance": 6},
+        {"op": "hsl", "color": "blue", "saturation": 14},
+        {"op": "hsl", "color": "aqua", "saturation": 10},
+        {"op": "split_tone", "highlight_hue": 190, "highlight_sat": 10, "shadow_hue": 260, "shadow_sat": 20},
+        {"op": "denoise", "value": 22},
+        {"op": "vignette", "amount": 14, "feather": 60},
+        {"op": "sharpen", "value": 26, "radius": 1.1}
+      ]
+    },
+    {
+      "id": "creamy-portrait",
+      "name": "奶油人像",
+      "group": "人像",
+      "intent": "肤色通透，暗部柔，肤色带轻微暖橙；皮肤纹理必须保住",
+      "suits": ["人像", "写真", "亲子"],
+      "caution": "clarity 已给负值柔化，不要再叠加降噪或大幅模糊，否则皮肤会变塑料。",
+      "ops": [
+        {"op": "exposure", "value": 0.12},
+        {"op": "contrast", "value": -12},
+        {"op": "shadows", "value": 22},
+        {"op": "highlights", "value": -16},
+        {"op": "saturation", "value": -6},
+        {"op": "vibrance", "value": 8},
+        {"op": "hsl", "color": "orange", "hue": -3, "saturation": -6, "luminance": 8},
+        {"op": "hsl", "color": "red", "saturation": -8},
+        {"op": "split_tone", "highlight_hue": 40, "highlight_sat": 8, "shadow_hue": 200, "shadow_sat": 6},
+        {"op": "clarity", "value": -14},
+        {"op": "sharpen", "value": 18, "radius": 1.4},
+        {"op": "vignette", "amount": 6, "feather": 70},
+        {"op": "grain", "amount": 4, "size": 1.0}
+      ]
+    },
+    {
+      "id": "clear-landscape",
+      "name": "通透风光",
+      "group": "风光",
+      "intent": "找回高光与暗部细节，中间调层次拉开，绿与蓝干净不发灰",
+      "suits": ["风光", "旅拍", "雪山", "草原"],
+      "ops": [
+        {"op": "auto_enhance", "strength": 55},
+        {"op": "exposure", "value": 0.05},
+        {"op": "contrast", "value": 12},
+        {"op": "highlights", "value": -20},
+        {"op": "shadows", "value": 16},
+        {"op": "clarity", "value": 18},
+        {"op": "vibrance", "value": 18},
+        {"op": "saturation", "value": -2},
+        {"op": "hsl", "color": "green", "hue": 6, "saturation": 8, "luminance": -4},
+        {"op": "hsl", "color": "blue", "saturation": 12, "luminance": -8},
+        {"op": "sharpen", "value": 45, "radius": 1.0},
+        {"op": "vignette", "amount": 8, "feather": 65}
+      ]
+    },
+    {
+      "id": "arch-cool",
+      "name": "建筑冷峻",
+      "group": "风光",
+      "intent": "冷白平衡、强结构、青蓝干净；靠清晰度与线条而不是饱和度取胜",
+      "suits": ["建筑", "室内", "城市几何"],
+      "ops": [
+        {"op": "temperature", "value": -14},
+        {"op": "tint", "value": -5},
+        {"op": "contrast", "value": 16},
+        {"op": "clarity", "value": 18},
+        {"op": "highlights", "value": -14},
+        {"op": "shadows", "value": 10},
+        {"op": "saturation", "value": -8},
+        {"op": "vibrance", "value": 4},
+        {"op": "hsl", "color": "blue", "saturation": 12, "luminance": -6},
+        {"op": "sharpen", "value": 38, "radius": 1.0},
+        {"op": "vignette", "amount": 8, "feather": 65},
+        {"op": "grain", "amount": 4, "size": 1.0}
+      ]
+    },
+    {
+      "id": "food-warm",
+      "name": "美食暖香",
+      "group": "静物",
+      "intent": "暖白平衡唤醒食欲，质感清楚但不油亮，背景安静",
+      "suits": ["美食", "产品", "咖啡", "烘焙"],
+      "ops": [
+        {"op": "exposure", "value": 0.08},
+        {"op": "temperature", "value": 9},
+        {"op": "tint", "value": 2},
+        {"op": "contrast", "value": 12},
+        {"op": "highlights", "value": -10},
+        {"op": "shadows", "value": 8},
+        {"op": "vibrance", "value": 16},
+        {"op": "saturation", "value": 2},
+        {"op": "hsl", "color": "orange", "saturation": 10, "luminance": 4},
+        {"op": "hsl", "color": "yellow", "saturation": 6},
+        {"op": "clarity", "value": 8},
+        {"op": "sharpen", "value": 34, "radius": 1.0},
+        {"op": "vignette", "amount": 6, "feather": 70}
+      ]
+    },
+    {
+      "id": "morandi",
+      "name": "莫兰迪低饱和",
+      "group": "通用",
+      "intent": "整体降饱和、灰调但有层次；靠明度关系撑住画面而不是靠颜色",
+      "suits": ["静物", "穿搭", "室内", "花艺"],
+      "ops": [
+        {"op": "saturation", "value": -28},
+        {"op": "vibrance", "value": 8},
+        {"op": "contrast", "value": -10},
+        {"op": "shadows", "value": 16},
+        {"op": "highlights", "value": -8},
+        {"op": "hsl", "color": "red", "saturation": -18},
+        {"op": "hsl", "color": "yellow", "saturation": -20},
+        {"op": "hsl", "color": "green", "saturation": -20},
+        {"op": "hsl", "color": "blue", "saturation": -16},
+        {"op": "hsl", "color": "magenta", "saturation": -14},
+        {"op": "split_tone", "highlight_hue": 42, "highlight_sat": 6, "shadow_hue": 250, "shadow_sat": 10},
+        {"op": "clarity", "value": -6},
+        {"op": "grain", "amount": 6, "size": 1.1}
+      ]
+    },
+    {
+      "id": "vintage-fade",
+      "name": "复古褪色",
+      "group": "氛围",
+      "intent": "黑位抬起、整体发灰发暖，像放了很久的相纸",
+      "suits": ["日常", "旅行", "怀旧"],
+      "ops": [
+        {"op": "levels", "black": 22, "white": 240, "gamma": 1.05},
+        {"op": "contrast", "value": -8},
+        {"op": "saturation", "value": -18},
+        {"op": "vibrance", "value": 6},
+        {"op": "temperature", "value": 10},
+        {"op": "tint", "value": 4},
+        {"op": "split_tone", "highlight_hue": 48, "highlight_sat": 16, "shadow_hue": 195, "shadow_sat": 14},
+        {"op": "clarity", "value": -4},
+        {"op": "vignette", "amount": 14, "feather": 60},
+        {"op": "grain", "amount": 26, "size": 1.5}
+      ]
+    },
+    {
+      "id": "bw-hard",
+      "name": "黑白硬调",
+      "group": "黑白",
+      "intent": "靠明暗结构与质感说话：黑要沉、白要亮、中间调利落",
+      "suits": ["人像", "建筑", "纪实", "纹理"],
+      "ops": [
+        {"op": "grayscale"},
+        {"op": "levels", "black": 8, "white": 246, "gamma": 0.98},
+        {"op": "contrast", "value": 26},
+        {"op": "clarity", "value": 16},
+        {"op": "shadows", "value": -6},
+        {"op": "highlights", "value": -6},
+        {"op": "sharpen", "value": 42, "radius": 1.1},
+        {"op": "vignette", "amount": 20, "feather": 55},
+        {"op": "grain", "amount": 10, "size": 1.2}
+      ]
+    },
+    {
+      "id": "bw-soft",
+      "name": "黑白柔调",
+      "group": "黑白",
+      "intent": "柔和的灰阶过渡 + 轻微暖调，适合人像与安静的题材",
+      "suits": ["人像", "静物", "雨天", "纪实"],
+      "ops": [
+        {"op": "grayscale"},
+        {"op": "contrast", "value": -4},
+        {"op": "shadows", "value": 20},
+        {"op": "highlights", "value": -12},
+        {"op": "clarity", "value": -8},
+        {"op": "split_tone", "highlight_hue": 45, "highlight_sat": 6, "shadow_hue": 210, "shadow_sat": 4},
+        {"op": "sharpen", "value": 16, "radius": 1.3},
+        {"op": "vignette", "amount": 10, "feather": 70},
+        {"op": "grain", "amount": 16, "size": 1.6}
+      ]
+    }
+  ]
+}

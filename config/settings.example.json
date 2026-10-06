@@ -1,0 +1,18 @@
+{
+  "_说明": "把本文件复制为 settings.json 再填自己的密钥；settings.json 已被 .gitignore 排除",
+  "active_model": "deepseek-flash",
+  "models": [
+    {
+      "id": "deepseek-flash",
+      "label": "DeepSeek Flash（支持读图）",
+      "base_url": "https://api.deepseek.com",
+      "api_key": "在这里填你的密钥，或改用环境变量 DEEPSEEK_API_KEY",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "vision": true
+    }
+  ],
+  "teaching": {
+    "max_tokens": 6144,
+    "target": "original"
+  }
+}

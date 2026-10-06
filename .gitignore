@@ -1,0 +1,25 @@
+# 注意：.gitignore 不支持"规则 + 行尾注释"，注释必须独占一行，
+# 否则整行会被当成字面规则（曾因此让下面的规则全部失效，把密钥文件也暂存了进去）。
+
+# ---- 运行时生成 / 含隐私，绝不提交 ----
+config/settings.json
+projects/
+logs/
+samples/*
+!samples/README.md
+.verify/
+.research/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
