@@ -520,35 +520,50 @@ def api_engine_run(payload: dict = Body(...)) -> dict:
     as_layer = payload.get("as_layer")
     as_layer = True if as_layer is None else bool(as_layer)
     with LOCK:
+        # 中间文件放在工程目录下的临时工作区：产物会被 import_asset 复制进工程，
+        # 所以无论成功还是失败（包括"引擎未启用"这种参数错），这个工作区都必须清干净——
+        # 否则每失败一次就在 projects/ 里留一份中间图（实测到过这个残留）。
         tmp_dir = PROJECTS_DIR / "_engine"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         stem = safe_name(f"{proj.doc.get('name') or 'doc'}-{command.replace('.', '_')}")
         in_path = tmp_dir / f"{stem}-in.png"
         out_path = tmp_dir / f"{stem}-out.jpg"
-        proj.export("png", 95, 0, str(in_path))
         try:
-            res = engines.run(STATE.settings, engine, command, params, timeout,
-                              in_path=str(in_path), out_path=str(out_path))
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from None
-        except Exception as e:
-            raise HTTPException(500, f"引擎执行失败：{type(e).__name__}: {e}") from None
-        if not res.get("ok"):
-            detail = (res.get("stderr") or res.get("stdout") or "").strip().splitlines()
-            raise HTTPException(400, f"引擎没有产出文件（退出码 {res.get('exit_code')}）："
-                                     f"{detail[-1][:200] if detail else '无输出'}")
-        layer_id = ""
-        if as_layer:
-            # 复用"加入图层"的同一条路径：快照 → 导入资产 → 建图层 → 画布适配
-            r = api_open({"paths": [res["output"]], "mode": "layer"})
-            layer_id = (r.get("added") or [""])[-1] if isinstance(r, dict) else ""
-        log_event("engine_run", engine=engine, command=command,
-                  seconds=res.get("seconds"), layer=layer_id)
-        return {"ok": True, "engine": engine, "command": command, "params": params,
-                "seconds": res.get("seconds"), "output": res.get("output"),
-                "output_size": res.get("output_size"), "layer": layer_id,
-                "stdout": (res.get("stdout") or "")[-600:],
-                "project": proj.state()}
+            proj.export("png", 95, 0, str(in_path))
+            try:
+                res = engines.run(STATE.settings, engine, command, params, timeout,
+                                  in_path=str(in_path), out_path=str(out_path))
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from None
+            except Exception as e:
+                raise HTTPException(500, f"引擎执行失败：{type(e).__name__}: {e}") from None
+            if not res.get("ok"):
+                detail = (res.get("stderr") or res.get("stdout") or "").strip().splitlines()
+                raise HTTPException(400, f"引擎没有产出文件（退出码 {res.get('exit_code')}）："
+                                         f"{detail[-1][:200] if detail else '无输出'}")
+            layer_id = ""
+            if as_layer:
+                # 复用"加入图层"的同一条路径：快照 → 导入资产 → 建图层 → 画布适配
+                r = api_open({"paths": [res["output"]], "mode": "layer"})
+                layer_id = (r.get("added") or [""])[-1] if isinstance(r, dict) else ""
+            log_event("engine_run", engine=engine, command=command,
+                      seconds=res.get("seconds"), layer=layer_id)
+            return {"ok": True, "engine": engine, "command": command, "params": params,
+                    "seconds": res.get("seconds"), "output": res.get("output"),
+                    "output_size": res.get("output_size"), "layer": layer_id,
+                    "stdout": (res.get("stdout") or "")[-600:],
+                    "project": proj.state()}
+        finally:
+            for p in (in_path, out_path):
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            try:
+                if not any(tmp_dir.iterdir()):
+                    tmp_dir.rmdir()
+            except Exception:
+                pass
 
 
 
