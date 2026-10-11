@@ -86,6 +86,27 @@ function askConfirm(title, text, okLabel = '确定') {
     else { $('#askBody').textContent = text; resolve(false); }
   });
 }
+// 应用内文本输入：原生 prompt() 与 confirm() 同源，都会被浏览器静默阻止
+function askText(title, label, defValue = '') {
+  return new Promise((resolve) => {
+    const dlg = $('#textDlg'), input = $('#textInput');
+    $('#textTitle').textContent = title;
+    $('#textLabel').textContent = label;
+    input.value = defValue;
+    const ok = $('#textOk'), cancel = $('#textCancel');
+    const done = (v) => {
+      ok.onclick = null; cancel.onclick = null; dlg.oncancel = null;
+      try { dlg.close(); } catch (e) { /* 已关闭 */ }
+      resolve(v);
+    };
+    ok.onclick = () => done(input.value.trim());
+    cancel.onclick = () => done(null);
+    dlg.oncancel = (e) => { e.preventDefault(); done(null); };
+    if (typeof dlg.showModal === 'function') { dlg.showModal(); setTimeout(() => input.focus(), 30); }
+    else resolve(null);
+  });
+}
+
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1288,20 +1309,84 @@ const EX_KEY = 'cog_export_prefs';
 function exPrefs() {
   try { return JSON.parse(localStorage.getItem(EX_KEY) || '{}') || {}; } catch (e) { return {}; }
 }
+// 出片参数（水印/边框）：只随导出请求发出去，不进工程、不影响预览
+function currentFinish() {
+  const f = {};
+  const border = $('#exBorder').value;
+  if (border) f.border = { style: border, width: Number($('#exBW').value) || 0 };
+  const text = $('#exWmText').value.trim();
+  if (text) {
+    f.watermark = { text, position: $('#exWmPos').value,
+                    opacity: Number($('#exWmOpacity').value), font_size: Number($('#exWmSize').value) };
+  }
+  return Object.keys(f).length ? f : null;
+}
+function applyFinish(f) {
+  const b = (f && f.border) || {}, w = (f && f.watermark) || {};
+  $('#exBorder').value = b.style || '';
+  $('#exBW').value = b.width == null ? 4 : b.width;
+  $('#exWmText').value = w.text || '';
+  $('#exWmPos').value = w.position || 'br';
+  $('#exWmOpacity').value = w.opacity == null ? 45 : w.opacity;
+  $('#exWmSize').value = w.font_size == null ? 4 : w.font_size;
+}
+function exportPresets() { return (ST.settings && ST.settings.export_presets) || []; }
+function fillExportPresets(keep) {
+  const sel = $('#exPreset');
+  const cur = keep ? sel.value : '';
+  sel.innerHTML = '<option value="">（不使用预设）</option>' +
+    exportPresets().map(p => `<option value="${esc(p.name)}">${esc(p.name)}　${esc(p.format)}·q${p.quality}</option>`).join('');
+  if (cur && exportPresets().some(p => p.name === cur)) sel.value = cur;
+}
+$('#exPreset').onchange = () => {
+  const p = exportPresets().find(x => x.name === $('#exPreset').value);
+  if (!p) return;
+  if (p.format) $('#exFmt').value = p.format;
+  if (p.quality) $('#exQ').value = p.quality;
+  if (p.max_side != null) $('#exMax').value = p.max_side;
+  applyFinish(p.finish || null);
+  toast('已套用预设：' + p.name);
+};
+$('#exPresetSave').onclick = async () => {
+  const name = await askText('保存为导出预设', '预设名称（例如：微博 4:3 带水印）', $('#exPreset').value || '');
+  if (!name) return;
+  const list = exportPresets().filter(p => p.name !== name);
+  list.push({ name, format: $('#exFmt').value, quality: Number($('#exQ').value),
+              max_side: Number($('#exMax').value), finish: currentFinish() });
+  const r = await api('/api/settings', { export_presets: list });
+  if (!r.ok) return toast(r.error, true);
+  await refreshSettingsQuiet();
+  fillExportPresets(true);
+  toast('已保存预设：' + name);
+};
+$('#exPresetDel').onclick = async () => {
+  const name = $('#exPreset').value;
+  if (!name) return toast('先在上面的下拉里选一个预设', true);
+  const r = await api('/api/settings', { export_presets: exportPresets().filter(p => p.name !== name) });
+  if (!r.ok) return toast(r.error, true);
+  await refreshSettingsQuiet();
+  fillExportPresets();
+  toast('已删除预设：' + name);
+};
+
 $('#btnExport').onclick = () => {
   const d = exPrefs();
   if (d.format) $('#exFmt').value = d.format;
   if (d.quality) $('#exQ').value = d.quality;
   if (d.max_side != null) $('#exMax').value = d.max_side;
   if (d.dir) $('#exPath').value = d.dir;
+  applyFinish(d.finish || null);
+  fillExportPresets(true);
   $('#exportDlg').showModal();
 };
 $('#exGo').onclick = async () => {
   $('#exportDlg').close();
   busy(true, '导出中…');
+  const finish = currentFinish();
   const r = await api('/api/export', {
     format: $('#exFmt').value, quality: Number($('#exQ').value),
-    max_side: Number($('#exMax').value), path: $('#exPath').value.trim()
+    max_side: Number($('#exMax').value), path: $('#exPath').value.trim(),
+    finish: finish, preset: $('#exPreset').value || ''
   });
   busy(false);
   if (!r.ok) return toast(r.error, true);
@@ -1310,9 +1395,10 @@ $('#exGo').onclick = async () => {
       format: $('#exFmt').value, quality: Number($('#exQ').value),
       max_side: Number($('#exMax').value),
       dir: String(r.path || '').replace(/[\\/][^\\/]*$/, ''),   // 记住上次的目录，不记文件名
+      finish: finish
     }));
   } catch (e) { /* 本地存储不可用时忽略 */ }
-  toast('已导出：' + r.path, false, 9000);
+  toast('已导出：' + r.path + (r.finish ? '　（' + r.finish + '）' : ''), false, 9000);
   applyState(r.project);
 };
 $('#btnQuit').onclick = async () => {

@@ -96,7 +96,7 @@ def load_recipe(args) -> tuple[list[dict], str]:
 
 def run_one(src: Path, recipe: list[dict], out_dir: Path, *, fmt: str, quality: int,
             max_side: int, settings: Settings, skip_existing: bool,
-            keep_projects: bool) -> dict:
+            keep_projects: bool, finish: dict | None = None) -> dict:
     """处理一张：建工程 → 套配方 → 导出 → 清理临时工程。
 
     清理用"前缀独占"的做法：给临时工程起一个带随机后缀的名字（batch-<8位>-<原名>），
@@ -115,7 +115,7 @@ def run_one(src: Path, recipe: list[dict], out_dir: Path, *, fmt: str, quality: 
         proj = Project.create_from_images([str(src)], settings=settings, name=tag)
         if recipe:
             proj.apply_ops(recipe)
-        proj.export(fmt, quality, max_side, str(out_path))
+        proj.export(fmt, quality, max_side, str(out_path), finish=finish)
         rec["ok"] = out_path.is_file()
         if not rec["ok"]:
             rec["error"] = "导出没有产出文件"
@@ -161,6 +161,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--jobs", type=int, default=1, help="并行数（默认 1，顺序最稳）")
     ap.add_argument("--keep-projects", action="store_true",
                     help="保留临时工程目录（排查用；默认处理完就删）")
+    g = ap.add_argument_group("出片参数（水印/边框，只影响成品）")
+    g.add_argument("--preset", default="", help="用设置里保存的导出预设（含格式/质量/尺寸/出片参数）")
+    g.add_argument("--watermark-text", default="", help="文字水印内容")
+    g.add_argument("--watermark-image", default="", help="图片水印路径（与文字二选一）")
+    g.add_argument("--watermark-pos", default="br",
+                   choices=["tl", "tc", "tr", "center", "bl", "bc", "br"], help="水印位置，默认右下")
+    g.add_argument("--watermark-opacity", type=float, default=45.0, help="水印不透明度 0~100")
+    g.add_argument("--watermark-scale", type=float, default=12.0,
+                   help="图片水印占画面宽度百分比；文字水印忽略此项")
+    g.add_argument("--border", default="", choices=["", "white", "black", "polaroid"], help="边框样式")
+    g.add_argument("--border-width", type=float, default=4.0, help="边框宽度（占长边百分比）")
+    g.add_argument("--border-bottom", type=float, default=14.0, help="拍立得下边宽度（百分比）")
     args = ap.parse_args(argv)
 
     ensure_dirs()
@@ -174,9 +186,47 @@ def main(argv: list[str] | None = None) -> int:
     recipe, src_desc = load_recipe(args)
     settings = Settings.load()
 
+    # 出片参数：先取预设，再用命令行显式参数覆盖
+    finish: dict = {}
+    if args.preset:
+        data = getattr(settings, "data", {}) or {}
+        hit = next((x for x in (data.get("export_presets") or [])
+                    if str(x.get("name")) == str(args.preset)), None)
+        if not hit:
+            raise SystemExit(f"没有名为 {args.preset!r} 的导出预设")
+        if isinstance(hit.get("finish"), dict):
+            finish = dict(hit["finish"])
+        if not args.style and not args.recipe and not args.from_project and hit.get("format"):
+            args.format = str(hit["format"])
+            args.quality = int(hit.get("quality") or args.quality)
+            args.max_side = int(hit.get("max_side") or args.max_side)
+    wm = {}
+    if args.watermark_text:
+        wm["text"] = args.watermark_text
+    elif args.watermark_image:
+        wm["image"] = args.watermark_image
+    if wm:
+        wm.update(position=args.watermark_pos, opacity=args.watermark_opacity,
+                  scale=args.watermark_scale)
+        finish["watermark"] = wm
+    if args.border:
+        finish["border"] = {"style": args.border, "width": args.border_width,
+                            "bottom": args.border_bottom}
+    if finish:
+        from . import finish as finish_mod
+
+        try:
+            finish = finish_mod.validate(finish)
+        except ValueError as e:
+            raise SystemExit(f"出片参数有问题：{e}") from None
+
     print(f"配方来源：{src_desc}")
     print(f"输入 {len(inputs)} 张 → {out_dir}　格式 {args.format}　质量 {args.quality}　"
           f"最长边 {args.max_side or '原尺寸'}　并行 {args.jobs}")
+    if finish:
+        from . import finish as finish_mod
+
+        print(f"出片：{finish_mod.describe(finish)}")
     print("-" * 72)
 
     results: list[dict] = []
@@ -187,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
             futs = [(i, pool.submit(run_one, p, recipe, out_dir, fmt=args.format,
                                     quality=args.quality, max_side=args.max_side,
                                     settings=settings, skip_existing=args.skip_existing,
-                                    keep_projects=args.keep_projects))
+                                    keep_projects=args.keep_projects, finish=finish))
                     for i, p in enumerate(inputs, 1)]
             for i, f in futs:
                 rec = f.result()
@@ -196,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         for i, p in enumerate(inputs, 1):
             rec = run_one(p, recipe, out_dir, fmt=args.format, quality=args.quality,
-                          max_side=args.max_side, settings=settings,
+                          max_side=args.max_side, settings=settings, finish=finish,
                           skip_existing=args.skip_existing, keep_projects=args.keep_projects)
             results.append(rec)
             _print_one(i, total, rec)
@@ -205,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     oks = [r for r in results if r["ok"]]
     bad = [r for r in results if not r["ok"]]
     report = {"generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "recipe": src_desc,
+              "finish": finish,
               "format": args.format, "quality": args.quality, "max_side": args.max_side,
               "total": total, "ok": len(oks), "failed": len(bad),
               "seconds": round(took, 1),

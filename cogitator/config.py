@@ -227,6 +227,8 @@ DEFAULTS: dict[str, Any] = {
     "external_engines": {
         "photocraft": {"enabled": False, "cli": "", "timeout": 180},
     },
+    # 导出预设：一套出片参数（格式/质量/尺寸上限/水印/边框），可在导出对话框里存与取
+    "export_presets": [],
 }
 
 
@@ -340,6 +342,7 @@ class Settings:
     def public(self) -> dict[str, Any]:
         """给前端/日志用：不含任何密钥。"""
         return {
+            "export_presets": list(self.data.get("export_presets") or []),
             "version": self.data.get("version", 1),
             "models": [m.to_dict(with_key=False) for m in self.models],
             "models_with_key": [m.id for m in self.models if m.resolved_key()],

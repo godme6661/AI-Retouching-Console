@@ -135,8 +135,52 @@
     </div>
     <label>另存为（留空=存到工程 exports 目录）</label>
     <input id="exPath" placeholder="例如 输出/成品.jpg（留空=导出到工程的 exports/）">
+    <label>导出预设（格式 / 质量 / 尺寸 / 出片参数一起存）</label>
+    <div class="grid2">
+      <select id="exPreset"><option value="">（不使用预设）</option></select>
+      <div style="display:flex;gap:6px">
+        <button id="exPresetSave" class="ghost" style="flex:1">保存为预设</button>
+        <button id="exPresetDel" class="ghost" style="flex:1">删除该预设</button>
+      </div>
+    </div>
+    <label>出片环节（只影响成品，不改工程与预览）</label>
+    <div class="grid2">
+      <div><label>边框</label>
+        <select id="exBorder">
+          <option value="">无边框</option>
+          <option value="white">白边</option>
+          <option value="black">黑边</option>
+          <option value="polaroid">拍立得（下方留宽）</option>
+        </select></div>
+      <div><label>边框宽度（占长边 %）</label><input id="exBW" type="number" value="4" min="0" max="25" step="0.5"></div>
+    </div>
+    <div class="grid2">
+      <div><label>水印文字</label><input id="exWmText" placeholder="例如 © 2026 你的名字"></div>
+      <div><label>水印位置</label>
+        <select id="exWmPos">
+          <option value="br">右下</option><option value="bc">下中</option><option value="bl">左下</option>
+          <option value="center">居中</option><option value="tr">右上</option><option value="tc">上中</option>
+          <option value="tl">左上</option>
+        </select></div>
+    </div>
+    <div class="grid2">
+      <div><label>水印不透明度 0~100</label><input id="exWmOpacity" type="number" value="45" min="0" max="100"></div>
+      <div><label>水印字号（占长边 %）</label><input id="exWmSize" type="number" value="4" min="1" max="30" step="0.5"></div>
+    </div>
   </div>
   <div class="dlg-foot"><button id="exGo" class="primary">导出</button></div>
+</dialog>
+
+<dialog id="textDlg">
+  <div class="dlg-head"><b id="textTitle">输入</b></div>
+  <div class="dlg-body">
+    <label id="textLabel"></label>
+    <input id="textInput" autocomplete="off">
+  </div>
+  <div class="dlg-foot">
+    <button id="textCancel" class="ghost">取消</button>
+    <button id="textOk" class="primary">确定</button>
+  </div>
 </dialog>
 
 <dialog id="refDlg">

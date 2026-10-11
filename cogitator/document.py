@@ -810,7 +810,8 @@ class Project:
         return self.preview_dir / "current.jpg"
 
     def export(self, fmt: str = "png", quality: int = 95, max_side: int = 0,
-               path: str | None = None) -> Path:
+               path: str | None = None, finish: dict | None = None) -> Path:
+        """导出成品。finish 是出片环节参数（水印/边框），只影响成品、不改工程。"""
         fmt = (fmt or "png").lower().lstrip(".")
         if fmt == "jpeg":
             fmt = "jpg"
@@ -819,10 +820,21 @@ class Project:
 
         cw, ch = int(self.doc["canvas"]["w"]), int(self.doc["canvas"]["h"])
         # 有尺寸上限时**直接按目标尺寸渲染**（与预览同一条已用等价性断言验证过的路径），
-        # 而不是"全分辨率渲染 + 事后缩小" —— 后者白烧几倍时间
+        # 而不是"全分辨率渲染 + 事后缩小" —— 后者白烧几倍时间。
+        # 注意：边长上限要约束**最终交付的文件**，所以有边框时先给边框留出余量
+        # （否则 1600px 的预设加 3% 白边会变成 1696px，超出用户给上传平台的上限）。
         scale = 1.0
-        if max_side and max(cw, ch) > max_side:
-            scale = max_side / float(max(cw, ch))
+        eff_max = max_side
+        bd = (finish or {}).get("border") or {}
+        if max_side and bd:
+            w = max(0.0, min(25.0, float(bd.get("width") or 4))) / 100.0
+            if str(bd.get("style") or "") == "polaroid":
+                b = max(0.0, min(40.0, float(bd.get("bottom") or 14))) / 100.0
+                eff_max = int(max_side / max(1.0 + 2 * w, 1.0 + w + b))
+            else:
+                eff_max = int(max_side / (1.0 + 2 * w))
+        if eff_max and max(cw, ch) > eff_max:
+            scale = eff_max / float(max(cw, ch))
         rgb, alpha = self.render_full(scale=scale)
 
         transparent = float(alpha.min()) < 0.999
@@ -846,6 +858,12 @@ class Project:
             kwargs = {"quality": int(min(100, max(1, quality))), "optimize": True, "subsampling": 0}
         elif fmt == "webp":
             kwargs = {"quality": int(min(100, max(1, quality))), "method": 6}
+        if finish:
+            from . import finish as finish_mod
+
+            pil = finish_mod.apply_finish(pil, finish_mod.validate(finish))
+            if fmt != "png" and pil.mode == "RGBA":     # jpg/webp 不能存透明通道
+                pil = pil.convert("RGB")
         pil.save(out, **kwargs)
         return out
 

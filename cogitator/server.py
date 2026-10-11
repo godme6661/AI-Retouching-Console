@@ -18,8 +18,9 @@ from typing import Any
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from . import (APP_NAME, __version__, agent as agent_mod, engines, llm, matting, ops, raw_io,
-               render, skills, styles as styles_mod, teaching as teach_mod)
+from . import (APP_NAME, __version__, agent as agent_mod, engines, finish as finish_mod, llm,
+               matting, ops, raw_io, render, skills, styles as styles_mod,
+               teaching as teach_mod)
 from .config import ModelProfile, Settings, preset_models
 from .document import ASSET_EXT, DocError, Project
 from .paths import LOG_DIR, PROJECTS_DIR, WEB_DIR, ensure_dirs, safe_name
@@ -450,17 +451,41 @@ def api_export_compare(payload: dict | None = Body(default=None)) -> dict:
     return {"ok": True, "path": str(out), "summary": proj.edit_summary()}
 
 
+def _export_presets() -> list[dict]:
+    """设置里保存的导出预设（格式/质量/尺寸上限/出片参数）。"""
+    data = getattr(STATE.settings, "data", {}) or {}
+    return [p for p in (data.get("export_presets") or []) if isinstance(p, dict) and p.get("name")]
+
+
+def _find_preset(name: str) -> dict:
+    for p in _export_presets():
+        if str(p.get("name")) == str(name):
+            return p
+    raise HTTPException(400, f"没有名为 {name!r} 的导出预设（可在 /api/settings 里查看）")
+
+
 @app.post("/api/export")
 def api_export(payload: dict = Body(...)) -> dict:
+    """导出成品。可给 preset 名字复用保存好的参数，也可直接给 finish（水印/边框）。"""
     proj = STATE.require()
+    preset = _find_preset(str(payload["preset"])) if payload.get("preset") else {}
+    fmt = str(payload.get("format") or preset.get("format") or "png")
+    quality = int(payload.get("quality") or preset.get("quality") or 95)
+    max_side = payload.get("max_side")
+    max_side = int(max_side) if max_side is not None else int(preset.get("max_side") or 0)
+    finish = payload.get("finish") or preset.get("finish") or None
+    try:
+        finish_mod.validate(finish)                     # 参数错就早报，别导出到一半才失败
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
     with LOCK:
-        path = proj.export(str(payload.get("format") or "png"),
-                           int(payload.get("quality") or 95),
-                           int(payload.get("max_side") or 0),
-                           payload.get("path") or None)
+        path = proj.export(fmt, quality, max_side, payload.get("path") or None, finish=finish)
         proj.last_export = str(path)
         proj.save()
-    return {"ok": True, "path": str(path), "project": proj.state()}
+    log_event("export", path=str(path), format=fmt, preset=payload.get("preset") or "",
+              finish=finish_mod.describe(finish))
+    return {"ok": True, "path": str(path), "finish": finish_mod.describe(finish),
+            "project": proj.state()}
 
 
 # ---------------------------------------------------------------- 外部引擎（可选）
@@ -629,6 +654,22 @@ def api_settings_save(payload: dict = Body(...)) -> dict:
             s.data["active_model"] = str(payload["active_model"] or "")
         if "teaching_model" in payload:
             s.data["teaching_model"] = str(payload["teaching_model"] or "")
+        if isinstance(payload.get("export_presets"), list):
+            clean = []
+            for p in payload["export_presets"]:
+                if not (isinstance(p, dict) and str(p.get("name") or "").strip()):
+                    continue
+                item = {"name": str(p["name"]).strip()[:40],
+                        "format": str(p.get("format") or "jpg"),
+                        "quality": int(p.get("quality") or 92),
+                        "max_side": int(p.get("max_side") or 0)}
+                if isinstance(p.get("finish"), dict):
+                    try:
+                        item["finish"] = finish_mod.validate(p["finish"])
+                    except ValueError as e:
+                        raise HTTPException(400, f"预设 {item['name']} 的出片参数有问题：{e}") from None
+                clean.append(item)
+            s.data["export_presets"] = clean[:50]
         for key in ("preview", "matting", "export", "vision", "skills", "chat", "network",
                     "raw", "teaching"):
             if isinstance(payload.get(key), dict):
