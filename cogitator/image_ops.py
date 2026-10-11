@@ -879,3 +879,75 @@ def fit_max_side(arr: np.ndarray, max_side: int) -> np.ndarray:
     nw, nh = max(1, int(W * scale)), max(1, int(H * scale))
     out = Image.fromarray((np.clip(arr, 0, 1) * 255 + 0.5).astype(np.uint8)).resize((nw, nh), Image.LANCZOS)
     return np.asarray(out, dtype=np.float32) / 255.0
+
+
+# ---------------------------------------------------------------- 局部调整用的选区
+def mask_gradient(width: int, height: int, kind: str, params: dict,
+                  base: np.ndarray | None) -> np.ndarray:
+    """渐变蒙版。linear：两点之间线性过渡；radial：以圆心与半径做椭圆过渡（可设内径成环）。
+
+    坐标全部归一化（0~1），与魔棒 / 手绘蒙版保持同一套约定，这样 AI 不必关心像素尺寸。
+    """
+    yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
+    xn = xx / max(width - 1, 1)
+    yn = yy / max(height - 1, 1)
+    if str(kind) == "radial":
+        cx = float(params.get("cx", 0.5) if params.get("cx") is not None else 0.5)
+        cy = float(params.get("cy", 0.5) if params.get("cy") is not None else 0.5)
+        rx = max(1e-3, float(params.get("radius", 0.35) or 0.35))
+        ry = params.get("radius_y")
+        ry = max(1e-3, float(ry)) if ry else rx                 # 省略即正圆
+        inner = min(0.95, max(0.0, float(params.get("inner") or 0.0)))
+        d = np.sqrt(((xn - cx) / rx) ** 2 + ((yn - cy) / ry) ** 2)
+        if inner > 0:                                            # 环状：内径以内为 0
+            m = np.clip((1.0 - d) / max(1e-3, 1.0 - inner), 0.0, 1.0)
+        else:
+            m = np.clip(1.0 - d, 0.0, 1.0)
+    else:
+        x1 = float(params.get("x1", 0.5) if params.get("x1") is not None else 0.5)
+        y1 = float(params.get("y1", 0.0) if params.get("y1") is not None else 0.0)
+        x2 = float(params.get("x2", 0.5) if params.get("x2") is not None else 0.5)
+        y2 = float(params.get("y2", 1.0) if params.get("y2") is not None else 1.0)
+        dx, dy = x2 - x1, y2 - y1
+        l2 = dx * dx + dy * dy
+        if l2 < 1e-6:
+            m = np.ones((height, width), dtype=np.float32)
+        else:
+            m = np.clip(((xn - x1) * dx + (yn - y1) * dy) / l2, 0.0, 1.0)
+    m = m.astype(np.float32)
+    if base is not None:
+        m = np.maximum(base, m)
+    return m
+
+
+def mask_range(img: np.ndarray, mode: str, lo: float, hi: float, color: str,
+               tolerance: float, base: np.ndarray | None) -> np.ndarray:
+    """范围选择：按亮度 / 饱和度 / 指定颜色生成软选区。
+
+    用途是「只压天空」「只提亮主体」这类局部调整——先把范围写成蒙版，再对同一图层继续调色。
+    阈值两端各有 4% 的软过渡带，避免选区边缘出现硬台阶。
+    """
+    if str(mode) == "color":
+        try:
+            h = str(color or "").strip().lstrip("#")
+            ref = np.array([int(h[i:i + 2], 16) for i in (0, 2, 4)], dtype=np.float32) / 255.0
+        except Exception:
+            ref = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+        dist = np.sqrt(((img - ref) ** 2).sum(axis=-1))
+        tol = max(0.005, float(tolerance or 18) / 100.0)
+        m = np.clip((tol * 1.6 - dist) / max(tol * 0.9, 1e-4), 0.0, 1.0)
+    else:
+        if str(mode) == "saturation":
+            v = img.max(axis=-1) - img.min(axis=-1)
+        else:                                                    # luma
+            v = 0.2126 * img[..., 0] + 0.7152 * img[..., 1] + 0.0722 * img[..., 2]
+        a = min(1.0, max(0.0, float(lo if lo is not None else 0) / 100.0))
+        b = min(1.0, max(0.0, float(hi if hi is not None else 100) / 100.0))
+        if b < a:
+            a, b = b, a
+        edge = 0.04
+        m = np.clip((v - a) / edge, 0.0, 1.0) * np.clip((b - v) / edge, 0.0, 1.0)
+    m = np.asarray(m, dtype=np.float32)
+    if base is not None:
+        m = np.maximum(base, m)
+    return m

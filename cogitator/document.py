@@ -264,9 +264,15 @@ class Project:
             raise DocError(f"步骤序号越界：图层[{layer['id']}] 有 {len(ops_list)} 步（从 0 计）")
         cur = ops_list[idx]
         name = cur.get("op")
-        allowed_here = {"feather", "grow", "invert"} if name in (
-            "remove_bg", "mask_brush", "mask_from_color") else None
+        allowed_here = {"feather", "grow", "invert", "scope"} if name in (
+            "remove_bg", "mask_brush", "mask_from_color",
+            "mask_gradient", "mask_range") else None
         merged = dict(cur)
+        # 蒙版文件名与尺寸不是"可调参数"，但校验器会按算子参数表严格检查，
+        # 于是任何蒙版步骤都会因为'不认识 mask_file'而无法微调（既有缺陷）。
+        # 这里先摘掉，校验通过后再补回（下面已有补回逻辑）。
+        for _k in ("mask_file", "mask_size"):
+            merged.pop(_k, None)
         for k, v in (params or {}).items():
             if k in ("op", "mask_file", "mask_size", "layer"):
                 continue
@@ -389,17 +395,36 @@ class Project:
             note = f"抠图引擎={engine}，主体占比约 {float((m > 0.5).mean()) * 100:.1f}%"
         elif op["op"] == "mask_from_color":
             base = None if op.get("replace", True) else alpha
+            # 注意：这里**不**在生成时反选。反选统一由 render 依据记录的 invert 施加，
+            # 否则会和 render 各做一次、互相抵消（曾因此让 invert 完全失效）。
             m = iop.mask_from_color(rgb, float(op["x"]), float(op["y"]), float(op.get("tolerance", 18)),
-                                    bool(op.get("invert")), base)
+                                    False, base)
             note = f"魔棒选区占比约 {float((m > 0.5).mean()) * 100:.1f}%"
+        elif op["op"] == "mask_gradient":
+            base = None if op.get("replace", True) else alpha
+            m = iop.mask_gradient(W, H, str(op.get("kind") or "linear"), op, base)
+            note = f"渐变选区（{op.get('kind') or 'linear'}）占比约 {float((m > 0.5).mean()) * 100:.1f}%"
+        elif op["op"] == "mask_range":
+            base = None if op.get("replace", True) else alpha
+            m = iop.mask_range(rgb, str(op.get("mode") or "luma"), op.get("lo"), op.get("hi"),
+                               str(op.get("color") or ""), op.get("tolerance"), base)
+            note = f"范围选区（{op.get('mode') or 'luma'}）占比约 {float((m > 0.5).mean()) * 100:.1f}%"
         else:                                            # mask_brush
-            base = alpha if alpha is not None else np.ones((H, W), dtype=np.float32)
+            if op.get("scope") and op.get("replace", True):
+                # 作用域模式：画到哪选到哪（从全 0 起画）。
+                # 抠图模式仍从全 1 起画，因为那里的语义是"擦除不要的部分"。
+                base = np.zeros((H, W), dtype=np.float32)
+            else:
+                base = alpha if alpha is not None else np.ones((H, W), dtype=np.float32)
             m = iop.mask_draw_strokes(base, op["strokes"], W, H)
             note = f"已绘制 {len(op['strokes'])} 笔"
 
         rel, size = self._save_mask(layer["id"], m)
         rec = {"op": op["op"], "mask_file": rel, "mask_size": list(size)}
-        for k in ("feather", "grow", "invert"):
+        if op["op"] == "mask_brush":
+            # 笔画是必填参数：不记进记录，这一步以后就无法微调（校验会说缺 strokes）
+            rec["strokes"] = op["strokes"]
+        for k in ("feather", "grow", "invert", "scope"):
             if k in op:
                 rec[k] = op[k]
         layer["ops"].append(rec)

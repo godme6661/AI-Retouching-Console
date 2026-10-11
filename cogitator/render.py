@@ -144,21 +144,35 @@ def render_layer_raster(layer: dict, base_dir: Path, upto: int | None = None,
     prev_scale = iop.render_scale()
     iop.set_render_scale(sc)
     try:
+        scope_only = False                       # 当前蒙版是"作用域"（不改可见性）还是"抠图"
         for op in ops:
             name = op.get("op")
             if name in iop.GEOM_FUNCS:
                 rgb, alpha = iop.GEOM_FUNCS[name](rgb, alpha, op)
                 rgb = np.clip(rgb, 0.0, 1.0)
             elif name in iop.COLOR_FUNCS:
-                rgb = np.clip(iop.COLOR_FUNCS[name](rgb, op), 0.0, 1.0)
-            elif name in ("remove_bg", "mask_brush", "mask_from_color", "clear_mask"):
+                out = np.clip(iop.COLOR_FUNCS[name](rgb, op), 0.0, 1.0)
+                if alpha is not None:
+                    # 蒙版即作用域：改过的像素按蒙版权重混回原像素。
+                    # 这是"只压天空""只提亮主体"能成立的关键——此前蒙版只决定可见性，
+                    # 于是渐变只能把画面擦成透明，而不是把调整限制在选区里。
+                    m = alpha[..., None]
+                    out = rgb * (1.0 - m) + out * m
+                rgb = out
+            elif name in ("remove_bg", "mask_brush", "mask_from_color",
+                          "mask_gradient", "mask_range", "clear_mask"):
                 alpha = _mask_op_alpha(base_dir, op, rgb.shape[:2], alpha)
+                scope_only = (name != "remove_bg" and name != "clear_mask"
+                              and bool(op.get("scope")) and alpha is not None)
     finally:
         iop.set_render_scale(prev_scale)
     if upto is None and not mask_key:
         packed = np.dstack([rgb, alpha]) if alpha is not None else rgb
         key = f"ras::{src_abs}::{src_mtime}::{sc}::{json.dumps(ops, sort_keys=True, ensure_ascii=False)}"
         _cache_put(key, packed)
+    # scope-only 的蒙版只用来限定调整范围，不应让图层变透明
+    if scope_only:
+        alpha = None
     return rgb, alpha
 
 
