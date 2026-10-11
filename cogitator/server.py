@@ -18,8 +18,8 @@ from typing import Any
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from . import (APP_NAME, __version__, agent as agent_mod, llm, matting, ops, raw_io, render,
-               skills, styles as styles_mod, teaching as teach_mod)
+from . import (APP_NAME, __version__, agent as agent_mod, engines, llm, matting, ops, raw_io,
+               render, skills, styles as styles_mod, teaching as teach_mod)
 from .config import ModelProfile, Settings, preset_models
 from .document import ASSET_EXT, DocError, Project
 from .paths import LOG_DIR, PROJECTS_DIR, WEB_DIR, ensure_dirs, safe_name
@@ -461,6 +461,70 @@ def api_export(payload: dict = Body(...)) -> dict:
         proj.last_export = str(path)
         proj.save()
     return {"ok": True, "path": str(path), "project": proj.state()}
+
+
+# ---------------------------------------------------------------- 外部引擎（可选）
+# 详见 cogitator/engines.py：进程边界、默认关闭、产物以「新图层」回来（不污染可重放管线）。
+
+@app.get("/api/engine/status")
+def api_engine_status() -> dict:
+    """哪些外部重型引擎可用（例如 photocraft 的 858 条命令）。"""
+    return engines.status(STATE.settings)
+
+
+@app.get("/api/engine/commands")
+def api_engine_commands(engine: str = "photocraft", filter: str = "", prefix: str = "",
+                        limit: int = 0, enabled_only: bool = False) -> dict:
+    """查询引擎命令注册表（带 10 分钟缓存；含参数说明与快捷键）。"""
+    return engines.commands(STATE.settings, engine, filter, prefix, limit, enabled_only)
+
+
+@app.post("/api/engine/run")
+def api_engine_run(payload: dict = Body(...)) -> dict:
+    """把一条命令交给外部引擎执行；产物默认作为**新图层**收回当前工程。
+
+    为什么先导出再执行：引擎吃的是文件，而本项目是"配方 + 源图"的管线；
+    导出当前渲染结果即是最忠实的输入。产物回来后走与手动导入完全相同的路径，
+    因此撤销 / 重放 / 导出仍然可靠。
+    """
+    proj = STATE.require()
+    engine = str(payload.get("engine") or "photocraft")
+    command = str(payload.get("command") or "")
+    params = payload.get("params") or {}
+    timeout = float(payload.get("timeout") or 180)
+    as_layer = payload.get("as_layer")
+    as_layer = True if as_layer is None else bool(as_layer)
+    with LOCK:
+        tmp_dir = PROJECTS_DIR / "_engine"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        stem = safe_name(f"{proj.doc.get('name') or 'doc'}-{command.replace('.', '_')}")
+        in_path = tmp_dir / f"{stem}-in.png"
+        out_path = tmp_dir / f"{stem}-out.jpg"
+        proj.export("png", 95, 0, str(in_path))
+        try:
+            res = engines.run(STATE.settings, engine, command, params, timeout,
+                              in_path=str(in_path), out_path=str(out_path))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:
+            raise HTTPException(500, f"引擎执行失败：{type(e).__name__}: {e}") from None
+        if not res.get("ok"):
+            detail = (res.get("stderr") or res.get("stdout") or "").strip().splitlines()
+            raise HTTPException(400, f"引擎没有产出文件（退出码 {res.get('exit_code')}）："
+                                     f"{detail[-1][:200] if detail else '无输出'}")
+        layer_id = ""
+        if as_layer:
+            # 复用"加入图层"的同一条路径：快照 → 导入资产 → 建图层 → 画布适配
+            r = api_open({"paths": [res["output"]], "mode": "layer"})
+            layer_id = (r.get("added") or [""])[-1] if isinstance(r, dict) else ""
+        log_event("engine_run", engine=engine, command=command,
+                  seconds=res.get("seconds"), layer=layer_id)
+        return {"ok": True, "engine": engine, "command": command, "params": params,
+                "seconds": res.get("seconds"), "output": res.get("output"),
+                "output_size": res.get("output_size"), "layer": layer_id,
+                "stdout": (res.get("stdout") or "")[-600:],
+                "project": proj.state()}
+
 
 
 # ---------------------------------------------------------------- 对话 / 教学

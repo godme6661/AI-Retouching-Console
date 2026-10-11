@@ -94,6 +94,13 @@
 - RAW 支持：CR3/CR2/NEF/ARW/DNG 等 18 种扩展名，三条解码路径自动降级
 - 工程即文件夹（`document.json` 记配方 + `sources/` 存源图副本），可直接拷走
 
+**开放接口**
+- **MCP 服务器**：任何支持 MCP 的 AI 客户端都能发现并执行这里的算子、看文档状态、取预览、导出
+  （`python -m cogitator.mcp_server`）——让"AI 操控修图工具"这件事反过来也成立
+- **外部引擎委派**（可选、默认关闭）：把重活（PSD 图层、排版、矢量、GPU 合成…）转发给外部重型引擎，
+  产物作为**新图层**回到工程。已实测接上 [PhotoCraft](https://github.com/storytold/photocraft) 的 858 条命令，
+  详见 [docs/INTEGRATION-photocraft.md](docs/INTEGRATION-photocraft.md)
+
 ---
 
 ## 截图
@@ -265,6 +272,81 @@ AI 的回复包含三段：**意图**（它理解成了什么）、**诊断**（
 
 ---
 
+## 让别的 AI 驱动它（MCP）
+
+项目构想是"让 AI 去操控图像编辑工具"。既然这套编辑能力已经收敛成"48 个算子的契约 + 渲染管线"，
+那它本身就应该能被任何 AI 操控——所以这里带了一个 MCP 服务器：
+
+```bash
+# 1) 先启动应用
+python -m cogitator --port 8760
+
+# 2) 再启动 MCP 服务器（客户端通过 stdio 与它通信）
+python -m cogitator.mcp_server --base http://127.0.0.1:8760
+```
+
+MCP 客户端配置示例：
+
+```json
+{ "mcpServers": { "cogitator": {
+    "command": "python",
+    "args": ["-m", "cogitator.mcp_server", "--base", "http://127.0.0.1:8760"] } } }
+```
+
+提供的能力：
+
+| 工具 | 作用 |
+| --- | --- |
+| `command_list` | 发现全部算子与风格配方（含参数区间、可关键词过滤） |
+| `command_run` / `command_batch` | 执行算子（非破坏性、可撤销；**整批原子**） |
+| `doc_inspect` | 看画布、图层树、每个图层的算子管线、撤销深度 |
+| `doc_open` / `doc_close` | 打开图片或已有工程 / 关闭当前工程 |
+| `render_preview` / `render_viewport` | 取预览图 / 取**真 1:1** 视口（判断锐化） |
+| `export_image` | 导出成品（JPG/PNG/WEBP，可限最长边） |
+| `undo` / `redo` | 撤销 / 重做 |
+| `engine_status` / `engine_run` | 查询并调用外部重型引擎（见下） |
+
+外加两个资源：`cogitator://commands`（算子契约）与 `cogitator://document`（当前文档）。
+
+**三条实现纪律**（见 [DECISIONS.md](docs/DECISIONS.md) D13）：
+MCP 进程**只做 stdio↔HTTP 桥**（不导入应用本体，保证 stdout 只有协议，不被任何日志污染）；
+**单一写者**（所有改动仍由应用那个进程落盘，不会两套状态打架）；
+**不做第二份契约**（命令清单直接复用 `/api/ops/manual` 里的结构化定义，与校验器、界面微调滑杆同源）。
+
+---
+
+## 外部引擎：把重活交出去（可选）
+
+本项目只有 48 个算子，PSD 图层、智能对象、排版、矢量、GPU 合成这些做不了。
+但不应该为此把 Rust 工作区搬进来——正确的做法是**进程边界委派**：
+
+```
+你的指令 → 本项目（AI 理解 + 审美 + 轻量精修）
+                 ↓  需要重活时
+          外部引擎（如 PhotoCraft：858 条命令）
+                 ↓  产物作为新图层回来
+          本项目（撤销 / 合成 / 导出仍走原路径）
+```
+
+```bash
+# 让本项目找到外部引擎（也可写进 config/settings.json 的 external_engines.photocraft.cli）
+set PHOTOCRAFT_CLI=D:\path\to\photocraft-cli.exe
+
+curl http://127.0.0.1:8760/api/engine/status              # 可用性 + 命令数
+curl "http://127.0.0.1:8760/api/engine/commands?filter=blur&limit=5"
+curl -X POST http://127.0.0.1:8760/api/engine/run -H "Content-Type: application/json" ^
+     -d "{\"command\":\"image.adjustments.colorLookup.list\"}"
+```
+
+实测：接上 PhotoCraft 0.7.0（858 条命令，140 条启用），执行一条命令 **0.14 秒**，
+产物作为 `L2` 图层进入工程，**撤销可一并回退**。
+
+**为什么默认关闭**：外部引擎处于早期阶段、接口会变，不能成为核心依赖；
+**为什么不进管线**：外部调用不是确定性算子，写进管线会破坏"同一配方到哪都重放出同一张图"。
+完整评估、协作方式与风险见 [docs/INTEGRATION-photocraft.md](docs/INTEGRATION-photocraft.md)。
+
+---
+
 ## 项目结构
 
 ```
@@ -278,10 +360,17 @@ cogitator/            应用主体（FastAPI + numpy/Pillow，无前端构建）
   agent.py llm.py     对话链路：提示词组装、模型调用、JSON 容错解析
   teaching.py         教学模式
   styles.py styles.json   13 套风格配方
-  server.py           34 个 HTTP 路由
+  server.py           40+ HTTP 路由
+  mcp_server.py       MCP 服务器（stdio↔HTTP 桥，让别的 AI 驱动它）
+  engines.py          外部重型引擎适配（进程边界、默认关闭）
   web/                原生 HTML/CSS/JS 前端（零构建）
 skills/aesthetics/    审美知识库：常驻核心 + 11 份按需参考（构图/光影/色彩/人像/街拍…）
-docs/                 设计文档（docs/DESIGN.md）与界面截图
+docs/                 设计文档与截图
+  DESIGN.md           设计日志：为什么这样取舍、实测数据
+  DECISIONS.md        设计决策记录（D1…D13）
+  GAPS.md             已知缺口自曝清单（含影响与工作量估计）
+  INTEGRATION-photocraft.md   与外部引擎的关系、协作方式与风险
+  screenshots/        界面截图（程序生成的合成示例图）
 ```
 
 ---
@@ -319,7 +408,14 @@ git checkout 306851d -- tools/
 * **输出像素查看模式不支持原图对比**：该模式显示的是服务端裁出的视口，与下采样预览的对比基准尺寸不同，硬叠会对不齐；
 * **修改技能包后需手动重载**：`skills/` 下改动不会热生效；
 * **抠图权重需自备**，且 RMBG-2.0 为**非商业**许可（详见上文）；
+* **外部引擎需你自行安装且默认关闭**：本项目不打包、不再分发任何第三方二进制；外部引擎处于早期阶段，
+  命令 id 与参数会变；
+* **对话里的 AI 还不能自己调用外部引擎**：目前需通过 HTTP / MCP 触发（原因与计划见
+  [docs/GAPS.md](docs/GAPS.md) 的 G1——想引入"非重放算子"就必须先说清撤销粒度，否则会破坏可复现性）；
 * 大批量导出、云同步、移动端适配均未实现（本项目的定位是"本机轻量修图台"）。
+
+更完整的**自曝式缺口清单**（含影响排序与工作量估计）在 [docs/GAPS.md](docs/GAPS.md)；
+每个关键取舍的理由在 [docs/DECISIONS.md](docs/DECISIONS.md)。
 
 ---
 

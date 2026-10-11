@@ -221,6 +221,12 @@ DEFAULTS: dict[str, Any] = {
         "decode": "auto",       # auto=有 rawpy 就用真解码，否则取内嵌全尺寸预览；rawpy；preview
         "half_size": False,     # rawpy 半尺寸解码（更快，画质略降）
     },
+    # 可选的外部重型引擎（例如 photocraft 的 858 条命令）。
+    # 默认**关闭**：外部引擎处于早期阶段、接口会变，必须显式启用；失败只影响该功能本身。
+    # cli 留空则依次尝试环境变量 PHOTOCRAFT_CLI 与 PATH 里的 photocraft-cli。
+    "external_engines": {
+        "photocraft": {"enabled": False, "cli": "", "timeout": 180},
+    },
 }
 
 
