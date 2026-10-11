@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-import sys
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -37,7 +36,7 @@ from pathlib import Path
 from . import styles as styles_mod
 from .config import Settings
 from .document import ASSET_EXT, Project
-from .paths import PROJECTS_DIR, ensure_dirs, safe_name, unique_dir
+from .paths import PROJECTS_DIR, ensure_dirs, safe_name
 
 # 从工程里拿配方时，这些字段属于"上一个工程的产物"，不能带过来
 _PER_PROJECT_KEYS = ("mask_file", "mask_size")

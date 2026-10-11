@@ -11,7 +11,7 @@
 一个跑在本机的轻量修图台：你在对话框里用自然语言说想要什么，AI 把它翻译成**结构化的编辑指令**，
 由本地确定性算子逐条执行。它能调色、抠图、多图合成，能当摄影老师点评你的照片，还能按风格配方一键出片。
 
-![主界面](docs/screenshots/01-chat.png)
+![主界面](docs/screenshots/01-chat.webp)
 
 ---
 
@@ -114,15 +114,15 @@
 
 | 对话修图 | 图层面板 |
 | --- | --- |
-| ![对话](docs/screenshots/01-chat.png) | ![图层](docs/screenshots/02-layers.png) |
+| ![对话](docs/screenshots/01-chat.webp) | ![图层](docs/screenshots/02-layers.webp) |
 
 | 原图对比（擦除） | 输出像素查看（1:1） |
 | --- | --- |
-| ![对比](docs/screenshots/03-compare.png) | ![输出像素](docs/screenshots/04-output-pixels.png) |
+| ![对比](docs/screenshots/03-compare.webp) | ![输出像素](docs/screenshots/04-output-pixels.webp) |
 
 | 教学模式 | 模型设置 |
 | --- | --- |
-| ![教学](docs/screenshots/05-teaching.png) | ![设置](docs/screenshots/06-settings.png) |
+| ![教学](docs/screenshots/05-teaching.webp) | ![设置](docs/screenshots/06-settings.webp) |
 
 > 截图使用程序生成的合成示例图，不含任何个人照片。
 
