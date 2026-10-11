@@ -230,6 +230,32 @@ AI 的回复包含三段：**意图**（它理解成了什么）、**诊断**（
 - 每个图层有自己的管线与混合模式，可单独微调
 - 步骤超过 8 步会自动折叠中间段（点击展开），避免长管线滚不到头
 
+### 批处理：一次判断，套用到一批照片
+
+在界面上把一张照片调好之后，那套配方可以**原样套用到一整批照片**——这是"AI 判断 + 确定性执行"
+最自然的价值放大方式。批处理做成**无头命令行**，独立进程运行，不打扰你正在用的实例：
+
+```bash
+# 用内置风格配方（可从 AI 对话里得到风格 id）
+python -m cogitator batch --in D:\照片 --out D:\成品 --style jp-airy --strength 80
+
+# 用某个工程调好的管线当配方（含渐变/范围蒙版，蒙版会按参数在新照片上重建）
+python -m cogitator batch --in D:\照片 --out D:\成品 --from-project projects/IMG_2009
+
+# 内联配方 + 尺寸限制 + 并行 3
+python -m cogitator batch --in D:\照片 --out D:\成品 --format jpg --max-side 2400 --jobs 3 \
+  --recipe "[{\"op\":\"exposure\",\"value\":0.2},{\"op\":\"vibrance\",\"value\":12}]"
+```
+
+特点：
+
+* **配方即 JSON**：可手写、可存档、可从任一工程导出；与"配方 + 源图"的工程模型一致
+* **顺序队列 + 进度**：逐张打印 `[3/20] 名称 → 成品 1.2s`，跑完在输出目录写 `batch-report.json`
+  （每张耗时、成败、错误原因）；有失败时退出码为 1，便于挂到计划任务
+* **单张失败不中断整批**：坏文件被隔离并记进报告（实测）
+* **用完即删**：临时工程不留在 `projects/`（用带随机后缀的名字 + 前缀兜底清理）
+* **支持 RAW**：CR3/NEF/ARW/DNG 等走与界面完全相同的导入路径
+
 ### 快捷键
 
 | 按键 | 作用 |
@@ -369,6 +395,7 @@ cogitator/            应用主体（FastAPI + numpy/Pillow，无前端构建）
   styles.py styles.json   13 套风格配方
   server.py           40+ HTTP 路由
   mcp_server.py       MCP 服务器（stdio↔HTTP 桥，让别的 AI 驱动它）
+  batch.py            跨文件批处理（无头，python -m cogitator batch …）
   engines.py          外部重型引擎适配（进程边界、默认关闭）
   web/                原生 HTML/CSS/JS 前端（零构建）
 skills/aesthetics/    审美知识库：常驻核心 + 11 份按需参考（构图/光影/色彩/人像/街拍…）

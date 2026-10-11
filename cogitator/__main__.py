@@ -16,6 +16,13 @@ from .paths import enable_utf8_stdio, pick_port
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 子命令：python -m cogitator batch …（批处理是无头独立流程，见 batch.py 的说明）
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "batch":
+        from . import batch
+        return batch.main(argv[1:])
+
     enable_utf8_stdio()
     ap = argparse.ArgumentParser(prog="cogitator", description=f"{APP_NAME} —— AI 操控的轻量修图台")
     ap.add_argument("--port", type=int, default=0, help="监听端口（默认自动挑一个空闲端口）")
